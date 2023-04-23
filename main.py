@@ -48,9 +48,7 @@ with open('data.csv') as fs:
 
 # used to convert the epoch time to a date
 def do_date(temp_date, tz):
-    # logger.info(datetime.datetime.fromtimestamp(temp_date).astimezone().tzinfo)
-    # print(datetime.datetime.fromtimestamp(temp_date).astimezone(pytz.timezone(tz)).tzinfo)
-    return datetime.datetime.fromtimestamp(temp_date).astimezone(pytz.timezone(tz)).strftime('%Y/%d/%m %H:%M:%S')
+    return datetime.datetime.fromtimestamp(temp_date).astimezone(pytz.timezone(tz)).strftime('%b %d, %Y %H:%M')
 
 
 # Get the forecast for a lat and long
@@ -94,26 +92,44 @@ Subject:{subject}
 
 # wrap the data into an HTML Email
 def wrap_forecast(data, tz):
+    bg_colors = {
+        'Clear': 'lightblue',
+        'Snow': 'white',
+        'Clouds': 'lightgrey',
+        'Rain': 'darkgrey'
+    }
+
     results = f"""
     <h1 style="text-align:center">Weather</h1>
-    <h3>Starting at {do_date(data['list'][0]['dt'], tz)}</h3>
+    <h3>Starting at {do_date(data['list'][0]['dt'], tz)}, {tz}</h3>
     <h4>Sunrise {do_date(data['city']['sunrise'], tz)} - Sunset {do_date(data['city']['sunset'], tz)}</h4>
     <hr>
+    <div style="display:flex;flex-wrap:wrap;">
     """
 
     for item in data['list']:
-        results += f"""
-        <h3>{do_date(item['dt'], tz)}</h3>
-        <ul>
-        <li>{item['weather'][0]['main']}</li>
-        <li>Temperature {item['main']['temp'] + to_Celsuis:,.2f}.</li>
-        <li>Feels like {item['main']['feels_like'] + to_Celsuis:,.2f}.</li>
-        <li>Low {item['main']['temp_min'] + to_Celsuis:,.2f}.</li>
-        <li>High {item['main']['temp_max'] + to_Celsuis:,.2f}.</li>
-        <li>Wind Speed {item['wind']['speed']}</li>
 
+        bg_color = bg_colors.get(item['weather'][0]['main'], 'lightgreen')
+
+        results += f"""
+        <div style="width:300px;border:1px solid green;padding:3px;margin:3px;border-radius:5px;background-color:{bg_color};">
+        <p style="text-align:center;">{do_date(item['dt'], tz)}</p>
+        <div style="width:100%;text-align:center;padding:0;margin:0;">
+        <img src="https://openweathermap.org/img/wn/{item['weather'][0]['icon']}.png"
+            style="margin:0 auto;padding:0;"/>
+        </div>
+        <ul>
+        <li>{item['weather'][0]['main']} - {item['weather'][0]['description']}</li>
+        <li>Temperature {item['main']['temp'] + to_Celsuis:,.2f} C.</li>
+        <li>Feels like {item['main']['feels_like'] + to_Celsuis:,.2f} C.</li>
+        <li>Low {item['main']['temp_min'] + to_Celsuis:,.2f} C.</li>
+        <li>High {item['main']['temp_max'] + to_Celsuis:,.2f}C.</li>
+        <li>Wind Speed {item['wind']['speed']}</li>
         </ul>
+        </div>
         """
+
+    results += """</div>"""
 
     return results
 
