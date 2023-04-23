@@ -4,6 +4,7 @@ import logging as myLog
 import os
 import requests
 import smtplib
+import pytz
 
 # https://openweathermap.org/forecast5
 FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
@@ -46,8 +47,10 @@ with open('data.csv') as fs:
 
 
 # used to convert the epoch time to a date
-def do_date(temp_date):
-    return datetime.datetime.fromtimestamp(temp_date).strftime('%Y/%d/%m %H:%M:%S')
+def do_date(temp_date, tz):
+    # logger.info(datetime.datetime.fromtimestamp(temp_date).astimezone().tzinfo)
+    # print(datetime.datetime.fromtimestamp(temp_date).astimezone(pytz.timezone(tz)).tzinfo)
+    return datetime.datetime.fromtimestamp(temp_date).astimezone(pytz.timezone(tz)).strftime('%Y/%d/%m %H:%M:%S')
 
 
 # Get the forecast for a lat and long
@@ -90,17 +93,17 @@ Subject:{subject}
 
 
 # wrap the data into an HTML Email
-def wrap_forecast(data):
+def wrap_forecast(data, tz):
     results = f"""
     <h1 style="text-align:center">Weather</h1>
-    <h3>Starting at {do_date(data['list'][0]['dt'])}</h3>
-    <h4>Sunrise {do_date(data['city']['sunrise'])} - Sunset {do_date(data['city']['sunset'])}</h4>
+    <h3>Starting at {do_date(data['list'][0]['dt'], tz)}</h3>
+    <h4>Sunrise {do_date(data['city']['sunrise'], tz)} - Sunset {do_date(data['city']['sunset'], tz)}</h4>
     <hr>
     """
 
     for item in data['list']:
         results += f"""
-        <h3>{do_date(item['dt'])}</h3>
+        <h3>{do_date(item['dt'], tz)}</h3>
         <ul>
         <li>{item['weather'][0]['main']}</li>
         <li>Temperature {item['main']['temp'] + to_Celsuis:,.2f}.</li>
@@ -118,7 +121,7 @@ def wrap_forecast(data):
 # loop over
 for user in users:
     my_weather = get_forecast(user['lat'], user['long'])
-    message = wrap_forecast(my_weather)
+    message = wrap_forecast(my_weather, user['tz'])
     send_message('Weather', message, user['email'])
 
 logger.info('Finished')
