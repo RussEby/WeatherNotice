@@ -5,6 +5,9 @@ import os
 import requests
 import smtplib
 import pytz
+import urllib.parse as up
+from psycopg2 import connect, sql
+from psycopg2.extras import RealDictCursor
 
 # https://openweathermap.org/forecast5
 FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
@@ -13,6 +16,7 @@ FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 API_KEY = os.environ.get("openweather_api_key")
 SENDING_EMAIL = os.environ.get("email")
 PASSWORD = os.environ.get("password")
+DB_URL = os.environ.get("DATABASE_URL")
 
 # logging
 logFilePath = "default.log"
@@ -40,10 +44,35 @@ logger.addFilter(NoUrlFilter())
 # used to convert Kelvin to Celsuis
 to_Celsuis = -273.15
 
+
+def get_users(ele_url=None):
+    if not ele_url:
+        up.uses_netloc.append("postgres")
+        ele_url = up.urlparse(DB_URL)
+
+    conn = connect(
+        user=ele_url.username,
+        password=ele_url.password,
+        host=ele_url.hostname,
+        port=ele_url.port,
+        database=ele_url.path[1:]
+    )
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute('SELECT * FROM users WHERE active = True;')
+    results = cursor.fetchall()
+
+    conn.close()
+
+    return results
+
+
+users = [dict(user) for user in get_users()]
+
 # Load the user data
-with open('data.csv') as fs:
-    reader = csv.DictReader(fs)
-    users = [row for row in reader]
+# with open('data.csv') as fs:
+#     reader = csv.DictReader(fs)
+#    users = [row for row in reader]
 
 
 # used to convert the epoch time to a date
@@ -108,7 +137,6 @@ def wrap_forecast(data, tz):
     """
 
     for item in data['list']:
-
         bg_color = bg_colors.get(item['weather'][0]['main'], 'lightgreen')
 
         results += f"""
@@ -136,8 +164,8 @@ def wrap_forecast(data, tz):
 
 # loop over
 for user in users:
-    my_weather = get_forecast(user['lat'], user['long'])
-    message = wrap_forecast(my_weather, user['tz'])
+    my_weather = get_forecast(user['latitude'], user['longitude'])
+    message = wrap_forecast(my_weather, user['timezone'])
     send_message('Weather', message, user['email'])
 
 logger.info('Finished')
