@@ -16,7 +16,7 @@ FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 API_KEY = os.environ.get("openweather_api_key")
 SENDING_EMAIL = os.environ.get("email")
 PASSWORD = os.environ.get("password")
-DB_URL = os.environ.get("DATABASE_URL")
+DB_URL = os.environ.get("database_url")
 
 # logging
 logFilePath = "default.log"

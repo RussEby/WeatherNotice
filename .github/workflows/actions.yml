@@ -2,7 +2,7 @@ name: run main.py
 
 on:
   schedule:
-    - cron: '1 7 * * *' # At 00:00 on Monday
+    - cron: '30 19 * * *' # At 00:00 on Monday
 
 jobs:
   build:
@@ -27,6 +27,7 @@ jobs:
           openweather_api_key: ${{ secrets.openweather_api_key }}
           email: ${{ secrets.email }}
           password: ${{ secrets.password }}
+          database_url: ${{secrets.database_url }}
         run: python main.py
 
       - name: commit files
