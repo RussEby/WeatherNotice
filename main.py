@@ -2,14 +2,14 @@ import csv
 import datetime
 import logging as myLog
 import os
-import requests
-import smtplib
-import pytz
-import urllib.parse as up
 from psycopg2 import connect, sql
 from psycopg2.extras import RealDictCursor
+import pytz
+import requests
+import smtplib
+import urllib.parse as up
 
-# https://openweathermap.org/forecast5
+# Base URL for openweather API
 FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
 # settings from Environment
@@ -34,21 +34,32 @@ logger.info('Starting')
 
 
 class NoUrlFilter(myLog.Filter):
+    """
+    Filtering class for the logging function.
+    Logging normally outputs the URL that is being accessed during an API, but the URL contains the API KEY and
+    I don't want that logged since it'll go into the Repo
+    Inherits from logging.Filter
+    """
+
     def filter(self, record):
-        print(record.getMessage())
         return 'http' not in record.getMessage()
 
 
+# adds the NoUrlFilter to the logger
 logger.addFilter(NoUrlFilter())
 
 # used to convert Kelvin to Celsuis
 to_Celsuis = -273.15
 
 
-def get_users(ele_url=None):
-    if not ele_url:
-        up.uses_netloc.append("postgres")
-        ele_url = up.urlparse(DB_URL)
+def get_users():
+    """
+    Retrieves the User information from the Database.
+
+    :returns: dictionary with the users.
+    """
+    up.uses_netloc.append("postgres")
+    ele_url = up.urlparse(DB_URL)
 
     conn = connect(
         user=ele_url.username,
@@ -67,21 +78,25 @@ def get_users(ele_url=None):
     return results
 
 
-users = [dict(user) for user in get_users()]
-
-# Load the user data
-# with open('data.csv') as fs:
-#     reader = csv.DictReader(fs)
-#    users = [row for row in reader]
-
-
-# used to convert the epoch time to a date
 def do_date(temp_date, tz):
+    """
+    Formats a epoch value into proper formatting
+
+    :param temp_date: epoch date to be formatted
+    :param tz: string: Timezone to be formatted into
+    :return string: formatted date
+    """
     return datetime.datetime.fromtimestamp(temp_date).astimezone(pytz.timezone(tz)).strftime('%b %d, %Y %H:%M')
 
 
-# Get the forecast for a lat and long
 def get_forecast(lat, long):
+    """
+    Hits the API and retrieves the 5-day forecast
+
+    :param lat: (float) latitude of the location
+    :param long: (float) longitude of the location
+    :returns (dict) of the weather forecast
+    """
     parameters = {
         "lat": lat,
         "lon": long,
@@ -101,6 +116,14 @@ def get_forecast(lat, long):
 
 # Send the message to an address
 def send_message(subject, body_message, rec_email):
+    """
+    preps and sends email message
+
+    :param subject: (str) text for Subject line on email
+    :param body_message: (str) text for the body of the email
+    :param rec_email: (str) email address to send to
+    """
+
     body = f'''Content-type: text/html
     MIME-Version: 1.0
 Subject:{subject}
@@ -119,8 +142,13 @@ Subject:{subject}
     logger.info(f'Sent email to {rec_email}')
 
 
-# wrap the data into an HTML Email
 def wrap_forecast(data, tz):
+    """
+    Builds the email together.
+
+    :param data: (dict) the weather forcast
+    :param tz: (str) timezone of the user
+    """
     bg_colors = {
         'Clear': 'lightblue',
         'Snow': 'white',
@@ -162,7 +190,10 @@ def wrap_forecast(data, tz):
     return results
 
 
-# loop over
+# get user's information, place in a list of dictionary
+users = [dict(user) for user in get_users()]
+
+# loop over the users
 for user in users:
     my_weather = get_forecast(user['latitude'], user['longitude'])
     message = wrap_forecast(my_weather, user['timezone'])
