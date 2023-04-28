@@ -1,6 +1,6 @@
 import csv
 import datetime
-import logging as myLog
+import logging
 import os
 from psycopg2 import connect, sql
 from psycopg2.extras import RealDictCursor
@@ -9,31 +9,8 @@ import requests
 import smtplib
 import urllib.parse as up
 
-# Base URL for openweather API
-FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
-# settings from Environment
-API_KEY = os.environ.get("openweather_api_key")
-SENDING_EMAIL = os.environ.get("email")
-PASSWORD = os.environ.get("password")
-DB_URL = os.environ.get("database_url")
-
-# logging
-logFilePath = "default.log"
-logLevel = myLog.DEBUG
-
-myLog.basicConfig(filename=logFilePath,
-                  filemode='a',
-                  format='%(asctime)s - %(levelname)s - %(message)s',
-                  datefmt='%d-%b-%y %H:%M:%S')
-
-logger = myLog.getLogger(__name__)
-logger.setLevel(logLevel)
-
-logger.info('Starting')
-
-
-class NoUrlFilter(myLog.Filter):
+class NoUrlFilter(logging.Filter):
     """
     Filtering class for the logging function.
     Logging normally outputs the URL that is being accessed during an API, but the URL contains the API KEY and
@@ -45,21 +22,41 @@ class NoUrlFilter(myLog.Filter):
         return 'http' not in record.getMessage()
 
 
-# adds the NoUrlFilter to the logger
-logger.addFilter(NoUrlFilter())
+def logging_setup(filter_fun, log_file_path="default.log"):
+    """
+    Set up the logging system
 
-# used to convert Kelvin to Celsuis
-to_Celsuis = -273.15
+    :param filter_fun: (filter Class) A filter to apply the logging system
+    :param log_file_path: (str, optional) Filename to place the logging
+    :returns: filter object to use for logging
+    """
+    log_level = logging.DEBUG
+
+    logging.basicConfig(filename=log_file_path,
+                        filemode='a',
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        datefmt='%d-%b-%y %H:%M:%S')
+
+    logger_ = logging.getLogger(__name__)
+    logger_.setLevel(log_level)
+
+    logger_.info('Starting')
+
+    # adds the NoUrlFilter to the logger
+    logger_.addFilter(filter_fun())
+
+    return logger_
 
 
-def get_users():
+def get_users(db_url):
     """
     Retrieves the User information from the Database.
 
+    :param db_url: (str) URL of the Postgres database
     :returns: dictionary with the users.
     """
     up.uses_netloc.append("postgres")
-    ele_url = up.urlparse(DB_URL)
+    ele_url = up.urlparse(db_url)
 
     conn = connect(
         user=ele_url.username,
@@ -89,22 +86,26 @@ def do_date(temp_date, tz):
     return datetime.datetime.fromtimestamp(temp_date).astimezone(pytz.timezone(tz)).strftime('%b %d, %Y %H:%M')
 
 
-def get_forecast(lat, long):
+def get_forecast(lat, long, app_id):
     """
     Hits the API and retrieves the 5-day forecast
 
     :param lat: (float) latitude of the location
     :param long: (float) longitude of the location
+    :param app_id: (str) Application ID for OpenWeather
     :returns (dict) of the weather forecast
     """
     parameters = {
         "lat": lat,
         "lon": long,
         "exclude": "current,minutely,daily",
-        "appid": API_KEY
+        "appid": app_id
     }
 
-    response = requests.get(url=FORECAST_URL, params=parameters)
+    # Base URL for OpenWeather API
+    forecast_url = "https://api.openweathermap.org/data/2.5/forecast"
+
+    response = requests.get(url=forecast_url, params=parameters)
     response.raise_for_status()
 
     data = response.json()
@@ -115,13 +116,14 @@ def get_forecast(lat, long):
 
 
 # Send the message to an address
-def send_message(subject, body_message, rec_email):
+def send_message(subject, body_message, rec_email, sending_email):
     """
     preps and sends email message
 
     :param subject: (str) text for Subject line on email
     :param body_message: (str) text for the body of the email
     :param rec_email: (str) email address to send to
+    :param sending_email: (dtr) email address sending from
     """
 
     body = f'''Content-type: text/html
@@ -132,9 +134,9 @@ Subject:{subject}
 
     with smtplib.SMTP('smtp.gmail.com', 587) as connection:
         connection.starttls()
-        connection.login(user=SENDING_EMAIL, password=PASSWORD)
+        connection.login(user=sending_email, password=os.environ.get("password"))
         connection.sendmail(
-            from_addr=SENDING_EMAIL,
+            from_addr=sending_email,
             to_addrs=rec_email,
             msg=body)
         connection.close()
@@ -146,15 +148,18 @@ def wrap_forecast(data, tz):
     """
     Builds the email together.
 
-    :param data: (dict) the weather forcast
+    :param data: (dict) the weather forecast
     :param tz: (str) timezone of the user
     """
     bg_colors = {
         'Clear': 'lightblue',
         'Snow': 'white',
-        'Clouds': 'lightgrey',
-        'Rain': 'darkgrey'
+        'Clouds': 'lightgray',
+        'Rain': 'darkgray'
     }
+
+    # used to convert Kelvin to Celsius
+    to_celsius = -273.15
 
     results = f"""
     <h1 style="text-align:center">Weather</h1>
@@ -168,7 +173,8 @@ def wrap_forecast(data, tz):
         bg_color = bg_colors.get(item['weather'][0]['main'], 'lightgreen')
 
         results += f"""
-        <div style="width:300px;border:1px solid green;padding:3px;margin:3px;border-radius:5px;background-color:{bg_color};">
+        <div style=
+        "width:300px;border:1px solid green;padding:3px;margin:3px;border-radius:5px;background-color:{bg_color};">
         <p style="text-align:center;">{do_date(item['dt'], tz)}</p>
         <div style="width:100%;text-align:center;padding:0;margin:0;">
         <img src="https://openweathermap.org/img/wn/{item['weather'][0]['icon']}.png"
@@ -176,10 +182,10 @@ def wrap_forecast(data, tz):
         </div>
         <ul>
         <li>{item['weather'][0]['main']} - {item['weather'][0]['description']}</li>
-        <li>Temperature {item['main']['temp'] + to_Celsuis:,.2f} C.</li>
-        <li>Feels like {item['main']['feels_like'] + to_Celsuis:,.2f} C.</li>
-        <li>Low {item['main']['temp_min'] + to_Celsuis:,.2f} C.</li>
-        <li>High {item['main']['temp_max'] + to_Celsuis:,.2f}C.</li>
+        <li>Temperature {item['main']['temp'] + to_celsius:,.2f} C.</li>
+        <li>Feels like {item['main']['feels_like'] + to_celsius:,.2f} C.</li>
+        <li>Low {item['main']['temp_min'] + to_celsius:,.2f} C.</li>
+        <li>High {item['main']['temp_max'] + to_celsius:,.2f}C.</li>
         <li>Wind Speed {item['wind']['speed']}</li>
         </ul>
         </div>
@@ -190,13 +196,16 @@ def wrap_forecast(data, tz):
     return results
 
 
+# start logging
+logger = logging_setup(NoUrlFilter)
+
 # get user's information, place in a list of dictionary
-users = [dict(user) for user in get_users()]
+users = [dict(user) for user in get_users(os.environ.get("database_url"))]
 
 # loop over the users
 for user in users:
-    my_weather = get_forecast(user['latitude'], user['longitude'])
+    my_weather = get_forecast(user['latitude'], user['longitude'], os.environ.get("openweather_api_key"))
     message = wrap_forecast(my_weather, user['timezone'])
-    send_message('Weather', message, user['email'])
+    send_message('Weather', message, user['email'], os.environ.get("email"))
 
 logger.info('Finished')
