@@ -18,17 +18,17 @@ class NoUrlFilter(logging.Filter):
     Inherits from logging.Filter
     """
 
-    def filter(self, record):
+    def filter(self, record) -> bool:
         return 'http' not in record.getMessage()
 
 
-def logging_setup(filter_fun, log_file_path="default.log"):
+def logging_setup(filter_fun, log_file_path="default.log") -> logging.Logger:
     """
     Set up the logging system
 
-    :param filter_fun: (filter Class) A filter to apply the logging system
-    :param log_file_path: (str, optional) Filename to place the logging
-    :returns: filter object to use for logging
+    :param filter_fun: (filter method) A filter to apply the logging system
+    :param log_file_path: (str) Filename to place the logging
+    :returns: (logging.Logger) filter object to use for logging
     """
     log_level = logging.DEBUG
 
@@ -48,12 +48,12 @@ def logging_setup(filter_fun, log_file_path="default.log"):
     return logger_
 
 
-def get_users(db_url):
+def get_users(db_url: str) -> list:
     """
     Retrieves the User information from the Database.
 
     :param db_url: (str) URL of the Postgres database
-    :returns: dictionary with the users.
+    :returns: list with the users.
     """
     up.uses_netloc.append("postgres")
     ele_url = up.urlparse(db_url)
@@ -75,25 +75,25 @@ def get_users(db_url):
     return results
 
 
-def do_date(temp_date, tz):
+def format_date(temp_date: int, tz: str) -> str:
     """
     Formats a epoch value into proper formatting
 
-    :param temp_date: epoch date to be formatted
-    :param tz: string: Timezone to be formatted into
-    :return string: formatted date
+    :param temp_date: (int) epoch date to be formatted
+    :param tz: (str) Timezone to be formatted into
+    :returns: (str) formatted date
     """
     return datetime.datetime.fromtimestamp(temp_date).astimezone(pytz.timezone(tz)).strftime('%b %d, %Y %H:%M')
 
 
-def get_forecast(lat, long, app_id):
+def get_forecast(lat, long, app_id) -> dict:
     """
     Hits the API and retrieves the 5-day forecast
 
     :param lat: (float) latitude of the location
     :param long: (float) longitude of the location
     :param app_id: (str) Application ID for OpenWeather
-    :returns (dict) of the weather forecast
+    :returns: (dict) of the weather forecast
     """
     parameters = {
         "lat": lat,
@@ -116,14 +116,15 @@ def get_forecast(lat, long, app_id):
 
 
 # Send the message to an address
-def send_message(subject, body_message, rec_email, sending_email):
+def send_message(subject: str, body_message: str, rec_email: str, sending_email: str, sending_password: str):
     """
     preps and sends email message
 
     :param subject: (str) text for Subject line on email
     :param body_message: (str) text for the body of the email
     :param rec_email: (str) email address to send to
-    :param sending_email: (dtr) email address sending from
+    :param sending_email: (str) email address sending from
+    :param sending_password: (str) password for sending email account
     """
 
     body = f'''Content-type: text/html
@@ -134,7 +135,7 @@ Subject:{subject}
 
     with smtplib.SMTP('smtp.gmail.com', 587) as connection:
         connection.starttls()
-        connection.login(user=sending_email, password=os.environ.get("password"))
+        connection.login(user=sending_email, password=sending_password)
         connection.sendmail(
             from_addr=sending_email,
             to_addrs=rec_email,
@@ -144,7 +145,7 @@ Subject:{subject}
     logger.info(f'Sent email to {rec_email}')
 
 
-def wrap_forecast(data, tz):
+def wrap_forecast(data: dict, tz: str):
     """
     Builds the email together.
 
@@ -163,8 +164,8 @@ def wrap_forecast(data, tz):
 
     results = f"""
     <h1 style="text-align:center">Weather</h1>
-    <h3>Starting at {do_date(data['list'][0]['dt'], tz)}, {tz}</h3>
-    <h4>Sunrise {do_date(data['city']['sunrise'], tz)} - Sunset {do_date(data['city']['sunset'], tz)}</h4>
+    <h3>Starting at {format_date(data['list'][0]['dt'], tz)}, {tz}</h3>
+    <h4>Sunrise {format_date(data['city']['sunrise'], tz)} - Sunset {format_date(data['city']['sunset'], tz)}</h4>
     <hr>
     <div style="display:flex;flex-wrap:wrap;">
     """
@@ -175,7 +176,7 @@ def wrap_forecast(data, tz):
         results += f"""
         <div style=
         "width:300px;border:1px solid green;padding:3px;margin:3px;border-radius:5px;background-color:{bg_color};">
-        <p style="text-align:center;">{do_date(item['dt'], tz)}</p>
+        <p style="text-align:center;">{format_date(item['dt'], tz)}</p>
         <div style="width:100%;text-align:center;padding:0;margin:0;">
         <img src="https://openweathermap.org/img/wn/{item['weather'][0]['icon']}.png"
             style="margin:0 auto;padding:0;"/>
@@ -196,16 +197,25 @@ def wrap_forecast(data, tz):
     return results
 
 
-# start logging
-logger = logging_setup(NoUrlFilter)
+if __name__ == "__main__":
 
-# get user's information, place in a list of dictionary
-users = [dict(user) for user in get_users(os.environ.get("database_url"))]
+    # start logging
+    logger = logging_setup(NoUrlFilter)
 
-# loop over the users
-for user in users:
-    my_weather = get_forecast(user['latitude'], user['longitude'], os.environ.get("openweather_api_key"))
-    message = wrap_forecast(my_weather, user['timezone'])
-    send_message('Weather', message, user['email'], os.environ.get("email"))
+    # get user's information, place in a list of dictionary
+    users = [dict(user) for user in get_users(os.environ.get("database_url"))]
 
-logger.info('Finished')
+    # loop over the users
+    for user in users:
+        my_weather = get_forecast(
+            user['latitude'],
+            user['longitude'],
+            os.environ.get("openweather_api_key", ''))
+        message = wrap_forecast(my_weather, user['timezone'])
+        send_message('Weather',
+                     message,
+                     user['email'],
+                     os.environ.get("email", ''),
+                     os.environ.get("password", ''))
+
+    logger.info('Finished')
